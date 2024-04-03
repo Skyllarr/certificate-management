@@ -29,7 +29,6 @@ import java.net.http.HttpResponse;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.Future;
 
 @MetaInfServices(value = HttpClientSpi.class)
 public class HttpClientSpiImpl implements HttpClientSpi {
@@ -37,7 +36,7 @@ public class HttpClientSpiImpl implements HttpClientSpi {
     HttpClient httpClient = HttpClient.newHttpClient();
 
     @Override
-    public Future<HttpResponseSpi> sendAsyncRequest(HttpRequestSpi httpRequest) {
+    public CompletableFuture<HttpResponseSpi> sendAsyncRequest(HttpRequestSpi httpRequest) {
 
         Map<String, List<String>> headers = httpRequest.getHeaders();
         HttpRequest.Builder builder = HttpRequest.newBuilder()

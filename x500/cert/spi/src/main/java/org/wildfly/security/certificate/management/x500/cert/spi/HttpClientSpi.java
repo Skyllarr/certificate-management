@@ -17,9 +17,9 @@
  */
 package org.wildfly.security.certificate.management.x500.cert.spi;
 
-import java.util.concurrent.Future;
+import java.util.concurrent.CompletableFuture;
 
 public interface HttpClientSpi {
 
-    Future<HttpResponseSpi> sendAsyncRequest(HttpRequestSpi httpRequest);
+    CompletableFuture<HttpResponseSpi> sendAsyncRequest(HttpRequestSpi httpRequest);
 }

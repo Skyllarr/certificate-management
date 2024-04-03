@@ -20,8 +20,10 @@ package org.wildfly.security.certificate.management.x500.cert.acme;
 
 import io.smallrye.mutiny.Uni;
 import jakarta.json.Json;
+import jakarta.json.JsonArray;
 import jakarta.json.JsonObject;
 import jakarta.json.JsonReader;
+import jakarta.json.JsonString;
 import org.wildfly.common.iteration.CodePointIterator;
 import org.wildfly.security.certificate.management.x500.cert.spi.HttpClientSpi;
 import org.wildfly.security.certificate.management.x500.cert.spi.HttpRequestSpi;
@@ -35,6 +37,7 @@ import java.net.URI;
 import java.net.URISyntaxException;
 import java.net.URL;
 import java.time.Instant;
+import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.Iterator;
@@ -48,6 +51,7 @@ import static org.wildfly.security.certificate.management.x500.cert.acme.Acme.BA
 import static org.wildfly.security.certificate.management.x500.cert.acme.Acme.BASE64_URL;
 import static org.wildfly.security.certificate.management.x500.cert.acme.Acme.INSTANCE;
 import static org.wildfly.security.certificate.management.x500.cert.acme.Acme.JSON_CONTENT_TYPE;
+import static org.wildfly.security.certificate.management.x500.cert.acme.Acme.META;
 import static org.wildfly.security.certificate.management.x500.cert.acme.Acme.PROBLEM_JSON_CONTENT_TYPE;
 import static org.wildfly.security.certificate.management.x500.cert.acme.Acme.RATE_LIMITED;
 import static org.wildfly.security.certificate.management.x500.cert.acme.Acme.REPLAY_NONCE;
@@ -106,6 +110,91 @@ public abstract class AsyncAcmeClientSpi {
 
     protected abstract void cleanupAfterChallenge(AcmeAccount account, AcmeChallenge challenge) throws AcmeException;
 
+    public Uni<Map<AcmeResource, URL>> getResourceUrls(AcmeAccount account, boolean staging) {
+        if (account == null) {
+            return Uni.createFrom().failure(new IllegalArgumentException("account"));
+        }
+        final Map<AcmeResource, URL> resourceUrls = new HashMap<>();
+//        final Map<AcmeResource, URL> resourceUrls = account.getResourceUrls(staging);
+
+        Uni<HttpResponseSpi> httpResponseUni;
+        // TODO do we want caching?
+//        if (!resourceUrls.isEmpty()) {
+//            return Uni.createFrom().item(resourceUrls);
+//        }
+
+        if (staging && account.getServerUrl(true) == null) {
+            return Uni.createFrom().failure(acme.noAcmeServerStagingUrlGiven());
+        }
+        httpResponseUni = sendGetRequest(account.getServerUrl(staging), 200, JSON_CONTENT_TYPE);
+
+        return httpResponseUni.map((HttpResponseSpi httpResponse) -> {
+            JsonObject directoryJson;
+            try {
+                directoryJson = getJsonResponse(httpResponse);
+            } catch (AcmeException e) {
+                throw new RuntimeException(e);
+            }
+            for (AcmeResource resource : AcmeResource.values()) {
+                String resourceUrl = AcmeClientSpiUtils.getOptionalJsonString(directoryJson, resource.getValue());
+                URL url;
+                try {
+                    url = resourceUrl != null ? new URL(resourceUrl) : null;
+                } catch (MalformedURLException e) {
+                    throw new RuntimeException(acme.unableToRetrieveAcmeServerDirectoryUrls(e));
+                }
+                resourceUrls.put(resource, url);
+            }
+            return resourceUrls;
+        }).onFailure().transform(Throwable::getCause);
+    }
+
+    public Uni<AcmeMetadata> getMetadata(AcmeAccount account, boolean staging) {
+        if (account == null) {
+            return Uni.createFrom().failure(new IllegalArgumentException("account"));
+        }
+        if (staging && account.getServerUrl(true) == null) {
+            return Uni.createFrom().failure(acme.noAcmeServerStagingUrlGiven());
+        }
+
+        Uni<HttpResponseSpi> httpResponseUni = sendGetRequest(account.getServerUrl(staging), 200, JSON_CONTENT_TYPE);
+
+        return httpResponseUni.map((HttpResponseSpi httpResponse) -> {
+                    JsonObject directoryJson;
+                    try {
+                        directoryJson = getJsonResponse(httpResponse);
+                    } catch (AcmeException e) {
+                        throw new RuntimeException(e);
+                    }
+
+                    JsonObject metadata = directoryJson.getJsonObject(META);
+                    if (metadata == null) {
+                        return null;
+                    }
+                    AcmeMetadata.Builder metadataBuilder = AcmeMetadata.builder();
+                    String termsOfServiceUrl = AcmeClientSpiUtils.getOptionalJsonString(metadata, Acme.TERMS_OF_SERVICE);
+                    if (termsOfServiceUrl != null) {
+                        metadataBuilder.setTermsOfServiceUrl(termsOfServiceUrl);
+                    }
+                    String websiteUrl = AcmeClientSpiUtils.getOptionalJsonString(metadata, Acme.WEBSITE);
+                    if (websiteUrl != null) {
+                        metadataBuilder.setWebsiteUrl(websiteUrl);
+                    }
+                    JsonArray caaIdentitiesArray = metadata.getJsonArray(Acme.CAA_IDENTITIES);
+                    if (caaIdentitiesArray != null) {
+                        final List<String> caaIdentities = new ArrayList<>(caaIdentitiesArray.size());
+                        for (JsonString caaIdentity : caaIdentitiesArray.getValuesAs(JsonString.class)) {
+                            caaIdentities.add(caaIdentity.getString());
+                        }
+                        metadataBuilder.setCaaIdentities(caaIdentities.toArray(new String[caaIdentities.size()]));
+                    }
+                    boolean externalAccountRequired = metadata.getBoolean(Acme.EXTERNAL_ACCOUNT_REQUIRED, false);
+                    metadataBuilder.setExternalAccountRequired(externalAccountRequired);
+                    return metadataBuilder.build();
+                })
+                .onFailure().transform(Throwable::getCause);
+    }
+
     public Uni<byte[]> getNewNonce(final AcmeAccount account, final boolean staging) {
         if (account == null) {
             return Uni.createFrom().failure(new IllegalArgumentException("account"));
@@ -162,45 +251,6 @@ public abstract class AsyncAcmeClientSpi {
             return null;
         }
         return CodePointIterator.ofString(nonce).base64Decode(BASE64_URL, false).drain();
-    }
-
-    public Uni<Map<AcmeResource, URL>> getResourceUrls(AcmeAccount account, boolean staging) {
-        if (account == null) {
-            return Uni.createFrom().failure(new IllegalArgumentException("account"));
-        }
-        final Map<AcmeResource, URL> resourceUrls = new HashMap<>();
-//        final Map<AcmeResource, URL> resourceUrls = account.getResourceUrls(staging);
-
-        Uni<HttpResponseSpi> httpResponseUni;
-        // TODO do we want caching?
-//        if (!resourceUrls.isEmpty()) {
-//            return Uni.createFrom().item(resourceUrls);
-//        }
-
-        if (staging && account.getServerUrl(true) == null) {
-            return Uni.createFrom().failure(acme.noAcmeServerStagingUrlGiven());
-        }
-        httpResponseUni = sendGetRequest(account.getServerUrl(staging), 200, JSON_CONTENT_TYPE);
-
-        return httpResponseUni.map((HttpResponseSpi httpResponse) -> {
-            JsonObject directoryJson;
-            try {
-                directoryJson = getJsonResponse(httpResponse);
-            } catch (AcmeException e) {
-                throw new RuntimeException(e);
-            }
-            for (AcmeResource resource : AcmeResource.values()) {
-                String resourceUrl = AcmeClientSpiUtils.getOptionalJsonString(directoryJson, resource.getValue());
-                URL url;
-                try {
-                    url = resourceUrl != null ? new URL(resourceUrl) : null;
-                } catch (MalformedURLException e) {
-                    throw new RuntimeException(acme.unableToRetrieveAcmeServerDirectoryUrls(e));
-                }
-                resourceUrls.put(resource, url);
-            }
-            return resourceUrls;
-        }).onFailure().transform(Throwable::getCause);
     }
 
     private Uni<HttpResponseSpi> sendGetRequest(String resourceUrl, int expectedResponseCode, String expectedContentType) {

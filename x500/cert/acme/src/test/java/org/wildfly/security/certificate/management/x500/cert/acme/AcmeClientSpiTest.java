@@ -18,9 +18,13 @@
 
 package org.wildfly.security.certificate.management.x500.cert.acme;
 
+import static org.junit.Assert.assertArrayEquals;
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNotEquals;
 import static org.junit.Assert.assertNotNull;
+import static org.junit.Assert.assertNull;
+import static org.junit.Assert.assertTrue;
 import static org.mockserver.model.HttpRequest.request;
 import static org.mockserver.model.HttpResponse.response;
 import static org.wildfly.security.certificate.management.x500.cert.acme.Acme.BASE64_URL;
@@ -268,6 +272,28 @@ public class AcmeClientSpiTest {
         String newNonce = ByteIterator.ofBytes(acmeClient.getNewNonce(account, false)).base64Encode(BASE64_URL, false).drainToString();
         assertNotEquals(nonce,newNonce);
         assertEquals(NEW_NONCE_RESPONSE, newNonce);
+    }
+
+    @Test
+    public void testGetMetadata() throws Exception {
+        server = setupTestGetMetadata();
+        AcmeAccount account = populateBasicAccount(ACCOUNT_8_V2);
+        AcmeMetadata metadata = acmeClient.getMetadata(account, false);
+        assertNotNull(metadata);
+        assertEquals("https://boulder:4431/terms/v7", metadata.getTermsOfServiceUrl());
+        assertEquals("https://github.com/letsencrypt/boulder", metadata.getWebsiteUrl());
+        assertArrayEquals(new String[] { "happy-hacker-ca.invalid", "happy-hacker2-ca.invalid" }, metadata.getCAAIdentities());
+        assertTrue(metadata.isExternalAccountRequired());
+
+        metadata = acmeClient.getMetadata(account, false);
+        assertNotNull(metadata);
+        assertEquals("https://boulder:4431/terms/v7", metadata.getTermsOfServiceUrl());
+        assertNull(metadata.getWebsiteUrl());
+        assertNull(metadata.getCAAIdentities());
+        assertFalse(metadata.isExternalAccountRequired());
+
+        metadata = acmeClient.getMetadata(account, false);
+        assertNull(metadata);
     }
 //
 //    @Test

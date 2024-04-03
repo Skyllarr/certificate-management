@@ -61,6 +61,14 @@ public class SimpleDelegatingAcmeClient {
         }
     }
 
+    public AcmeMetadata getMetadata(final AcmeAccount account, final boolean staging) throws AcmeException {
+        if (this.syncClient != null) {
+            return this.syncClient.getMetadata(account, staging);
+        } else {
+            return this.asyncClient.getMetadata(account, staging).await().indefinitely();
+        }
+    }
+
     private static AcmeChallenge proveIdentifierControlHelper(AcmeAccount account, List<AcmeChallenge> challenges) throws AcmeException {
         AcmeChallenge selectedChallenge = null;
         for (AcmeChallenge challenge : challenges) {
