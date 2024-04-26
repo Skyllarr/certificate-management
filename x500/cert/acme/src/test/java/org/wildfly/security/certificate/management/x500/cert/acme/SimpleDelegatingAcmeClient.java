@@ -21,6 +21,7 @@ package org.wildfly.security.certificate.management.x500.cert.acme;
 import okhttp3.mockwebserver.Dispatcher;
 import okhttp3.mockwebserver.MockResponse;
 import okhttp3.mockwebserver.RecordedRequest;
+import org.wildfly.security.certificate.management.x500.cert.X509CertificateChainAndSigningKey;
 
 import java.util.List;
 
@@ -50,6 +51,62 @@ public class SimpleDelegatingAcmeClient {
                     // do nothing
                 }
             };
+        }
+    }
+
+    public boolean createAccount(final AcmeAccount account, final boolean staging) throws AcmeException {
+        if (this.syncClient != null) {
+            return this.syncClient.createAccount(account, staging);
+        } else {
+            return this.asyncClient.createAccount(account, staging).await().indefinitely();
+        }
+    }
+
+    public boolean createAccount(AcmeAccount account, boolean staging, boolean onlyReturnExisting) throws AcmeException {
+        if (this.syncClient != null) {
+            return this.syncClient.createAccount(account, staging, onlyReturnExisting);
+        } else {
+            return this.asyncClient.createAccount(account, staging, onlyReturnExisting).await().indefinitely();
+        }
+    }
+
+    public void updateAccount(AcmeAccount account, boolean staging, boolean termsOfServiceAgreed, String[] contactUrls) throws AcmeException {
+        if (this.syncClient != null) {
+            this.syncClient.updateAccount(account, staging, termsOfServiceAgreed, contactUrls);
+        } else {
+            this.asyncClient.updateAccount(account, staging, termsOfServiceAgreed, contactUrls).await().indefinitely();
+        }
+    }
+
+    public String[] queryAccountContactUrls(final AcmeAccount account, final boolean staging) throws AcmeException {
+        if (this.syncClient != null) {
+            return this.syncClient.queryAccountContactUrls(account, staging);
+        } else {
+            return this.asyncClient.queryAccountContactUrls(account, staging).await().indefinitely();
+        }
+    }
+
+    public void changeAccountKey(final AcmeAccount account, final boolean staging) throws AcmeException {
+        if (this.syncClient != null) {
+            this.syncClient.changeAccountKey(account, staging);
+        } else {
+            this.asyncClient.changeAccountKey(account, staging).await().indefinitely();
+        }
+    }
+
+    String queryAccountStatus(AcmeAccount account, boolean staging) throws AcmeException {
+        if (this.syncClient != null) {
+            return this.syncClient.queryAccountStatus(account, staging);
+        } else {
+            return this.asyncClient.queryAccountStatus(account, staging).await().indefinitely();
+        }
+    }
+
+    X509CertificateChainAndSigningKey obtainCertificateChain(AcmeAccount account, boolean staging, String keyAlgorithmName, int keySize, String... domainName) throws AcmeException {
+        if (this.syncClient != null) {
+            return this.syncClient.obtainCertificateChain(account, staging, keyAlgorithmName, keySize, domainName);
+        } else {
+            return this.asyncClient.obtainCertificateChain(account, staging, keyAlgorithmName, keySize, domainName).await().indefinitely();
         }
     }
 
